@@ -1,0 +1,389 @@
+Ansible configuration: ansible.cfg
+Hosts Inventory: /etc/ansible/hosts
+Core modules:
+Custom modules:
+Playbooks: 
+Connection pluggins: native SSH, paramiko SSH
+Pluggins: 
+
+Ansible control node: All ansible operations initiated from control node. Ansible software is installed on control node. Ansible config 
+	files are maintained in control node. Also called Ansible host and control machine. 
+	
+
+Managed hosts: Ansible logs in, installs modules, and execute remote commands. Also called managed node and remote node. 
+
+ansible --list-hosts <sometab>
+ansible --list-hosts webservers
+ansible -m command -a "uptime" webservers
+ansible -m command -a "uname -a" webservers
+ansible -m ping webservers
+ansible -m command -a "hostname" webservers
+ansible -m file -a "dest=/tmp/test mode=777 owner=admin group=admin" testserver --become --become-method=sudo --become-user=root -K 
+
+
+
+
+
+[webservers]
+localhost ansible_connection=local
+web1.example.com
+web2.example.com:1234 ansible_connection=ssh ansible_user=ftaylor
+192.178.[4:7].[0:255]
+server[01:16].example.com
+
+
+
+Installation: 
+	yum list installed python
+
+ftpservice.yml
+---
+ - hosts: all
+   become: true
+   become_user: root
+   tasks:
+     - name:stat vsftpd service
+       service:
+         name: vsftpd
+         state: started
+         
+ansible-playbook ftpservice.yml -K
+
+
+copyfile.yml
+---
+  - hosts: all
+    become: true
+    become_user: root
+    tasks:
+      - name: copy the file
+        copy: 
+          src: /tmp/abcd
+          dest: /tmp
+          owner: unixadm
+          group: root
+          mode: 0777
+          when: ansible_distribution == "RedHat" and ansible_distribution_major_version == '7'
+
+ansible-playbook copyfile.yml -K
+
+
+Custom modules should be available in the location $ANSIBLE_LIBRARY or #library=/usr/share/my_modules
+Few examples: cloud, clustering, commands, database, files, inventory, messaging, monitoring, network, notification, packaging, source control,
+system, utilities, web infrastructure, windows
+
+Core  modules will be in loctaion: /usr/lib/python/site-packages/ansible/modules
+
+Module documentation available at docs.ansible.com or ansible-doc command
+To get the  list of modules in control node: ansible-doc -l command
+To get info about a module: ansible-doc yum
+
+ansible webservers -m yum -a "name=tree state=present" --become -K
+
+ansible webservers -m yum -a "name=httpd state=present" --become -K
+
+ansible webservers -m service -a "name=httpd state=started" --become -K
+
+systemctl status httpd
+what does /etc/resolv.conf
+Idempotent approach
+
+
+lab-non-idempotent.yml
+---
+  - host: webuser
+    become: true
+    become_user: root
+    tasks:
+      - name: Non-idempotent approach with shell modules
+        shell: echo "nameserver 192.168.0.1" >> /tmp/resolv.conf
+        
+lab-idempotent.yml
+---
+  - host: webuser
+    become: true
+    become_user: root
+    tasks: 
+      - name: Idempotent approach with copy module
+        copy:
+          dest: /tmp/resolv1.conf
+          content: "nameserver 192.168.0.1\n"
+ 
+
+ansible-playbook lab-idempotent.yml -K
+
+
+
+
+multiple_tasks.yml
+---
+  - host: webservers
+    become: true
+    become_user: root
+    tasks:
+      - name: latest vsftpd version installation
+        yum: 
+          name: vsftpd
+          state: latest
+      - name: latest firewalld version installation
+        yum: 
+          name: firewalld
+          state: latest
+      - name: vsftpd enabled and running
+        service: 
+          name: vsftpd
+          enabled: true
+          state: started
+      - name: firewalld enabled and running
+        service: 
+          name: firewalld
+          enabled: true
+          state: started
+
+
+ansible-playbook multipletask.yml
+ansible-playbook multipletask.yml -K -C			#to check without making changes
+ansible-playbook --syntax-check multipletask.yml	#To do syntax check
+ansible-playbook --step multipletask.yml -K -C		#To give confirmationf for each step. 
+
+
+apache_webserver_install.yml
+---
+  - host: webservers
+    become: true
+    become_user: root
+    tasks:
+    - name: Install latest package of apache
+      yum: 
+        name: httpd
+        state: latest
+    - name: Start and enable httpd service
+      service: 
+        name: httpd
+        enabled: true
+        state: started
+    - name: Install latest package of firewalld
+      yum: 
+        name: firewalld
+        state: latest
+    - name: Start and enable firewalld service
+      service: 
+        name: firewalld
+        enabled: true
+        state: started
+    - name: Permit http service
+      firewalld: 
+        service: http
+        permanent: true
+        state: enabled
+        immediate; yes
+   - name: Create simple html web page
+     copy: 
+        content: "Welcome to the Ansible Learning course module\n"
+        dest: /var/www/html/index.html
+   - name: Defining web server name
+     lineinfile: 
+        path: /etc/httpd/conf/httpd.conf
+        line: ServerName www.client1.example.com:80
+        insertafter: "#ServerName"
+   - name: Update its entry in /etc/hosts
+     lineinfile: 
+        path: /etc/hosts
+        line: 192.168.43.139 www.client1.example.com 
+
+
+ansible-playbook --syntax-check apache_webserver_install.yml
+ansible-playbook apache_webserver_install.yml -K --step
+
+firewall-cmd --zone=public --list-all
+elinks client1.example.com
+
+
+
+vars_apache_webserver_install.yml
+---
+  - name: Install Apache and start the service
+    hosts: webserver
+    become: true
+    vars:
+      web_pgk: httpd
+      firewall_pkg: firewalld
+      web_service: httpd
+      firewall_service: firewalld
+      python_pkg: python-httplib2
+      rule: http
+    tasks:
+      - name: Install the required packages {{ web_pkg }}, {{ firewall_pkg }}, {{ perl_pkg }}
+        yum: 
+          name: 
+            - "{{ web_pkg }}"
+            - "{{ firewall_pkg }}"
+            - "{{ perl_pkg }}"
+          state: latest
+      - name: Start and enable the {{ firewall_service }} service
+        service: 
+          name: "{{ firewall_service }}"
+          enabled: true
+          state: started
+      - name: Start nd enable the {{ web_pkg }} service
+        service: 
+          name: "{{ web_service }}"
+          enabled:true
+          state: started
+      
+      - name: Create web content to be served
+        copy: 
+          content: "Welcome to the world of web content"
+          dest: /var/www/html/index.html
+      
+      - name: Open the port for {{ rule }}
+        firewalld: 
+          service: "{{ rule }}"
+          permanent: true
+          immediate: true
+          state: enabled
+          
+            
+ansible-playbook vars_apache_webserver_install.yml -K 
+      
+
+
+Ansible facts:
+ansible demo1.example.com -m setup
+	hostname 	{{ ansible_hostname }}
+	Main IPv4 address (based on routing) {{ ansible_default_ipv4.address }}
+	Main disk first partition size (based on disk name, such as vda, vdb, etc) 	{{ ansible_devices.vda.partitions.vda1.size }}
+	DNS servers	{{ ansible_dns.nameservers }}
+	Kernal version 	{{ ansible_kernel }}
+
+ansible demo1.example.com -m setup
+
+
+facts_lab6.yml				#When facts are used in a playbook, ansible substitutes the values for those variables. 
+---
+  - host: all
+    tasks:
+    - name: Prints variable Ansible facts
+      debug: 
+      msg: > 
+        The default IPV4 address of {{ ansible_fqdn }} is {{ ansible_default_ipv4.address }}	
+        
+
+ansible-playbook all -m setup
+
+ansible-playbook all -m setup -a 'filter=ansible_eth0'		#Filters the output to specific values
+ansible-playbook all -m setup -a 'filter=ansible_dns'
+
+
+[server]
+demo.example.com ansible_user=joe			#Host variable example
+
+[servers]
+demo1.example.com
+demo2.example.com
+
+[servers:vars]
+user=joe						#Group variable example
+
+[servers1]
+demo1.example.com
+demo2.example.com
+
+[servers2]
+demo3.example.com
+demo3.example.com
+
+[servers:children]
+servers1
+servers2
+
+[servers:var]
+user=joe
+
+
+
+
+lab7.yml:
+---
+  - name: Install remote facts
+    hosts: dev
+    become: true
+    vars: 
+     remote_dir: /etc/ansible/facts.d
+     facts_file: custom.fact
+    tasks:
+     - name: Create the remote directory
+       file: 
+        state: directory
+        recurse: yes
+        path: "{{ remote_dir }}"
+     - name: Install the new facts
+       copy: 
+        src: "{{ facts_file }}"
+        dest: "{{ remote_dir }}"
+     
+
+
+
+#Conditionals
+- name: Install mariadb-server if enough space on root ie., more than 300MB
+  yum: 
+    name: mariadb-server
+    state: latest
+    with_items: "{{ ansible_mounts }}"
+    when: item.mount == "/" and item.size_variable > 300000000
+    
+
+#Ansible handlers are tasks that respond to notifications triggered by other tasks. Each handler has a globally unique name and is 
+triggered at the end of the block of tasks in playbook.Typically used for reboot tasks and restart services. 
+
+tasks: 
+ - name: copy demo.example.conf configuration template
+   copy: 
+    src: /var/lib/templates/demo.example.conf example
+    dest: /etc/httpd/conf.d/demo.example.conf
+   notify: 
+    - restart_apache
+    
+   handlers:
+    - name: restart_apache
+      service: 
+       name: httpd
+       state: restarted
+
+
+#Loops1
+- yum:
+   name: "{{ item }}"
+   state: latest
+  with_items:
+   - postfix
+   - dovecot
+
+#Loops2
+vars: 
+ mail_services: 
+  - postfix
+  - dovecot
+ tasks:
+  - yum: 
+    name: "{{ item }}"
+    state: latest
+   with_items: "{{ mail_services }}"
+
+
+#Loop3
+- user: 
+   name: "{{ item.name }}"
+   state: present
+   groups: "{{ items.groups }}"
+  with_items: 
+   - { name: 'jane', groups: 'wheel' }
+   
+
+
+
+
+rpm -qa|grep -i vsftpd   #to check if a package is installed
+systemctl status vsftpd  #to check if the service is enabled
+
